@@ -1,3 +1,5 @@
+import { withCache } from '../lib/cache';
+
 const WATCHMODE_BASE_URL = 'https://api.watchmode.com/v1';
 
 // Minimal structural types for the Vercel Node handler signature. Declared
@@ -42,37 +44,45 @@ export default async function handler(req: ProxyRequest, res: ProxyResponse) {
   const { action, title, id } = req.query;
 
   let upstreamUrl: string;
+  let cacheKey: string;
   if (action === 'search') {
     if (typeof title !== 'string' || title.trim() === '') {
       return res.status(400).json({ error: 'title is required' });
     }
     upstreamUrl = `${WATCHMODE_BASE_URL}/search/?apiKey=${apiKey}&search_field=name&search_value=${encodeURIComponent(title)}&types=tv`;
+    cacheKey = `watchmode:search:${title.trim().toLowerCase()}`;
   } else if (action === 'sources') {
     if (typeof id !== 'string' || !/^\d+$/.test(id)) {
       return res.status(400).json({ error: 'numeric id is required' });
     }
     upstreamUrl = `${WATCHMODE_BASE_URL}/title/${id}/sources/?apiKey=${apiKey}&regions=US`;
+    cacheKey = `watchmode:sources:${id}`;
   } else {
     return res.status(400).json({ error: 'unknown action' });
   }
 
   try {
-    const upstreamResponse = await fetch(upstreamUrl);
+    // Streaming availability changes on the order of weeks, so results are held for a day.
+    // Empty results are held briefly instead, so a title that becomes available shows up
+    // without waiting out a long TTL.
+    const freshFor = (data: unknown) => (isEmptyResult(data) ? 3600 : 86400);
 
-    if (!upstreamResponse.ok) {
-      // Log the real status server-side; don't hand upstream auth failures to the client.
-      console.error(`WATCHMODE: upstream responded ${upstreamResponse.status}`);
-      return res.status(502).json({ error: 'upstream request failed' });
-    }
+    const result = await withCache<unknown>({
+      key: cacheKey,
+      freshFor,
+      fetch: async () => {
+        const upstreamResponse = await fetch(upstreamUrl);
+        if (!upstreamResponse.ok) {
+          // Log the real status server-side; don't hand upstream auth failures to the client.
+          console.error(`WATCHMODE: upstream responded ${upstreamResponse.status}`);
+          throw new Error(`upstream responded ${upstreamResponse.status}`);
+        }
+        return upstreamResponse.json();
+      }
+    });
 
-    const data = await upstreamResponse.json();
-
-    // Streaming availability changes on the order of weeks, so cache hits are held for a
-    // day. Empty results are held briefly instead, so a title that becomes available shows
-    // up without waiting out a long TTL.
-    const maxAge = isEmptyResult(data) ? 3600 : 86400;
-    res.setHeader('Cache-Control', `s-maxage=${maxAge}, stale-while-revalidate=604800`);
-    return res.status(200).json(data);
+    res.setHeader('Cache-Control', `s-maxage=${freshFor(result.data)}, stale-while-revalidate=604800`);
+    return res.status(200).json(result.data);
   } catch (error) {
     console.error('WATCHMODE: proxy request failed:', error);
     return res.status(502).json({ error: 'upstream request failed' });

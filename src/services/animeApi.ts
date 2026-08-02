@@ -1,27 +1,10 @@
 import axios from 'axios';
-import { SeasonResponse, Season, Anime } from '../types/anime';
+import { SeasonEndpointResponse, Season, Anime } from '../types/anime';
 import { streamingService, StreamingPlatform } from './streamingService';
 import { cacheService, CacheService } from './cacheService';
 
-const BASE_URL = 'https://api.jikan.moe/v4';
-
-// Rate limiting: Jikan API has rate limits
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
 class AnimeApiService {
-  private lastRequestTime = 0;
-  private readonly rateLimitDelay = 1000; // 1 second between requests for Jikan API only
-
   private async makeRequest<T>(url: string): Promise<T> {
-    const now = Date.now();
-    const timeSinceLastRequest = now - this.lastRequestTime;
-    
-    if (timeSinceLastRequest < this.rateLimitDelay) {
-      await delay(this.rateLimitDelay - timeSinceLastRequest);
-    }
-
-    this.lastRequestTime = Date.now();
-    
     try {
       const response = await axios.get<T>(url);
       return response.data;
@@ -31,36 +14,11 @@ class AnimeApiService {
     }
   }
 
-  async getSeasonalAnime(year: number, season: Season): Promise<Anime[]> {
-    const url = `${BASE_URL}/seasons/${year}/${season}`;
-    const response = await this.makeRequest<SeasonResponse>(url);
-    
-    // Get streaming data for each anime
-    const animeWithStreaming = await Promise.all(
-      response.data.map(async (anime) => {
-        try {
-          const streamingResult = await streamingService.findStreamingPlatforms(anime);
-          return {
-            ...anime,
-            streaming: streamingResult.platforms || []
-          };
-        } catch (error) {
-          console.error(`Failed to get streaming data for ${anime.title}:`, error);
-          return {
-            ...anime,
-            streaming: []
-          };
-        }
-      })
-    );
-    
-    return animeWithStreaming;
-  }
-
   // Fast loading - get anime without streaming data
   async getSeasonalAnimeBasic(year: number, season: Season): Promise<Anime[]> {
-    // Check cache first
-    const cacheKey = CacheService.generateKey('anime-basic', { season, year });
+    // Check cache first. The key is versioned: v1 entries hold the truncated 25-title
+    // lists from before pagination existed and must not be served.
+    const cacheKey = CacheService.generateKey('anime-basic-v2', { season, year });
     const cachedData = await cacheService.get<Anime[]>(cacheKey);
     
     if (cachedData) {
@@ -69,10 +27,15 @@ class AnimeApiService {
     }
 
     console.log(`📦 CACHE MISS: Fetching basic anime data for ${season} ${year} from API...`);
-    
-    const url = `${BASE_URL}/seasons/${year}/${season}`;
-    const response = await this.makeRequest<SeasonResponse>(url);
-    
+
+    // Served by api/season.ts, which pages Jikan to completion and caches the result
+    // globally. Calling Jikan directly from here only ever returned the first 25 titles.
+    const url = `/api/season?year=${year}&season=${season}`;
+    const response = await this.makeRequest<SeasonEndpointResponse>(url);
+
+    const { total, partial, stale } = response.meta;
+    console.log(`✓ SEASON: ${response.data.length}/${total} titles${partial ? ' (partial)' : ''}${stale ? ' (stale cache)' : ''}`);
+
     // Return anime with empty streaming arrays for fast initial load
     const animeData = response.data.map(anime => ({
       ...anime,
@@ -132,11 +95,6 @@ class AnimeApiService {
     });
     
     return streamingMap;
-  }
-
-  async getUpcomingSeason(): Promise<SeasonResponse> {
-    const url = `${BASE_URL}/seasons/upcoming`;
-    return await this.makeRequest<SeasonResponse>(url);
   }
 
   getCurrentSeasonInfo(): { season: Season; year: number } {

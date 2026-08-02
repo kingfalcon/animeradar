@@ -1,0 +1,18 @@
+{
+  // The main tsconfig only covers src/. Serverless code under api/ and lib/ is compiled by
+  // Vercel at deploy time, so without this it was never typechecked before a push.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": ["node"],
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true
+  },
+  "include": ["api", "lib"]
+}
