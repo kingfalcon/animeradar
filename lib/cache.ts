@@ -38,11 +38,16 @@ function getClient(): Redis | null {
     return client;
   }
 
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  // Vercel's Redis integrations inject different names depending on which one is installed
+  // (Upstash Marketplace vs the older KV integration), so accept either rather than making
+  // the deployment depend on getting the variable name right.
+  const url = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
 
   if (!url || !token) {
-    console.warn('CACHE: Upstash credentials not set, running uncached');
+    console.warn(
+      'CACHE: no Redis credentials found (checked UPSTASH_REDIS_REST_URL and KV_REST_API_URL), running uncached'
+    );
     client = null;
   } else {
     client = new Redis({ url, token });
