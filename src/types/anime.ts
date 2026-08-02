@@ -19,6 +19,8 @@ export interface Anime {
     from: string;
     to?: string;
   };
+  // Jikan: "Not yet aired" | "Currently Airing" | "Finished Airing"
+  status?: string;
   season: string;
   year: number;
   score?: number;

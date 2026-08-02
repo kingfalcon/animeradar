@@ -2,6 +2,7 @@
 import { Star, Play } from 'lucide-react';
 import { Anime } from '../../types/anime';
 import { formatDate } from '../../utils/formatters';
+import { hasAired } from '../../utils/airingStatus';
 import { STREAMING_PLATFORM_COLORS, DEFAULT_PLATFORM_COLOR } from '../../constants/streaming';
 
 interface AnimeCardProps {
@@ -35,6 +36,19 @@ const AnimeCard = ({ anime, streamingLoading = false }: AnimeCardProps) => {
                 {platform.name}
               </a>
             ))}
+          </div>
+        </div>
+      );
+    }
+
+    // Nothing is streaming a show that hasn't aired, and we deliberately skip the lookup,
+    // so say so rather than showing a skeleton that resolves to blank.
+    if (!hasAired(anime)) {
+      return (
+        <div className="mt-3">
+          <div className="flex items-center gap-2">
+            <Play className="w-4 h-4 text-gray-400" />
+            <span className="text-sm font-medium text-gray-400">Not yet airing</span>
           </div>
         </div>
       );

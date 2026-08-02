@@ -13,6 +13,18 @@ interface ProxyResponse {
   setHeader(name: string, value: string): void;
 }
 
+/** A search with no matches, or a title with no known sources. */
+function isEmptyResult(data: unknown): boolean {
+  if (Array.isArray(data)) {
+    return data.length === 0;
+  }
+  if (data && typeof data === 'object' && 'title_results' in data) {
+    const results = (data as { title_results?: unknown }).title_results;
+    return !Array.isArray(results) || results.length === 0;
+  }
+  return false;
+}
+
 /**
  * Server-side proxy for the WatchMode API.
  *
@@ -54,7 +66,12 @@ export default async function handler(req: ProxyRequest, res: ProxyResponse) {
     }
 
     const data = await upstreamResponse.json();
-    res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=86400');
+
+    // Streaming availability changes on the order of weeks, so cache hits are held for a
+    // day. Empty results are held briefly instead, so a title that becomes available shows
+    // up without waiting out a long TTL.
+    const maxAge = isEmptyResult(data) ? 3600 : 86400;
+    res.setHeader('Cache-Control', `s-maxage=${maxAge}, stale-while-revalidate=604800`);
     return res.status(200).json(data);
   } catch (error) {
     console.error('WATCHMODE: proxy request failed:', error);
