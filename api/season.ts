@@ -2,7 +2,11 @@
 // relative imports. The extension refers to the compiled output, not this source file.
 import { withCache } from '../lib/cache.js';
 
-const JIKAN_BASE_URL = 'https://api.jikan.moe/v4';
+// Tenrai rather than Jikan. Jikan scrapes MyAnimeList and is rate-limited by it, so any
+// request it hasn't cached fails - which is precisely our paginated back-page requests.
+// Tenrai's v1 schema is Jikan-v4-compatible, so this is a base-URL swap. It also dedupes
+// server-side: Fall 2026 is 83 unique titles here versus Jikan's 92 with duplicates.
+const API_BASE_URL = 'https://api.tenrai.org/v1';
 const SEASONS = ['winter', 'spring', 'summer', 'fall'];
 const FRESH_FOR_SECONDS = 6 * 60 * 60;
 
@@ -13,7 +17,7 @@ const FRESH_FOR_SECONDS = 6 * 60 * 60;
  */
 const PARTIAL_FRESH_FOR_SECONDS = 10 * 60;
 
-/** Jikan reports last_visible_page; this bounds the damage if that value is ever wrong. */
+/** last_visible_page is upstream-reported; this bounds the damage if it is ever wrong. */
 const MAX_PAGES = 10;
 
 interface ProxyRequest {
@@ -26,18 +30,18 @@ interface ProxyResponse {
   setHeader(name: string, value: string): void;
 }
 
-interface JikanGenre {
+interface ApiGenre {
   mal_id: number;
   name: string;
 }
 
-interface JikanAnime {
+interface ApiAnime {
   mal_id: number;
   title?: string;
   rating?: string | null;
-  genres?: JikanGenre[];
-  explicit_genres?: JikanGenre[];
-  themes?: JikanGenre[];
+  genres?: ApiGenre[];
+  explicit_genres?: ApiGenre[];
+  themes?: ApiGenre[];
   [key: string]: unknown;
 }
 
@@ -53,7 +57,7 @@ interface JikanAnime {
  */
 const ADULT_GENRE_NAMES = new Set(['hentai', 'erotica']);
 
-function isAdult(anime: JikanAnime): boolean {
+function isAdult(anime: ApiAnime): boolean {
   if (anime.rating?.startsWith('Rx')) {
     return true;
   }
@@ -67,8 +71,8 @@ function isAdult(anime: JikanAnime): boolean {
   );
 }
 
-interface JikanPage {
-  data: JikanAnime[];
+interface ApiPage {
+  data: ApiAnime[];
   pagination?: {
     last_visible_page?: number;
     items?: { total?: number };
@@ -76,7 +80,7 @@ interface JikanPage {
 }
 
 interface SeasonPayload {
-  anime: JikanAnime[];
+  anime: ApiAnime[];
   /** Upstream's count for the season, before adult titles are removed. */
   total: number;
   pages: number;
@@ -88,7 +92,7 @@ interface SeasonPayload {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** Jikan allows roughly 3 requests/second; this stays comfortably under it. */
+/** Upstream limits aren't published; this stays deliberately gentle. */
 const PAGE_DELAY_MS = 400;
 const RETRY_BASE_DELAY_MS = 1200;
 const MAX_ATTEMPTS = 3;
@@ -101,22 +105,12 @@ async function fetchPage(
   season: string,
   page: number,
   attempt = 1
-): Promise<JikanPage> {
-  // Page 1 is requested without the page parameter even though ?page=1 is equivalent.
-  // Jikan caches the unparameterized URL; any ?page= request goes to MyAnimeList live and
-  // fails whenever MAL is unavailable. Measured during one such window: the bare URL
-  // returned 200 three times out of three while ?page=1 returned 504 three times out of
-  // three. Using the bare form means a degraded season still returns its first 25 titles
-  // instead of nothing.
-  const url =
-    page === 1
-      ? `${JIKAN_BASE_URL}/seasons/${year}/${season}`
-      : `${JIKAN_BASE_URL}/seasons/${year}/${season}?page=${page}`;
+): Promise<ApiPage> {
+  // The bare-URL special case this used to carry was a workaround for Jikan's cache
+  // behaviour and no longer applies - Tenrai serves ?page=1 the same as any other page.
+  const response = await fetch(`${API_BASE_URL}/seasons/${year}/${season}?page=${page}`);
 
-  const response = await fetch(url);
-
-  // 429 is our own pacing; 5xx is usually Jikan failing to reach MyAnimeList, which it does
-  // often enough to matter. Both are worth a backed-off retry.
+  // 429 is our own pacing; 5xx is an upstream problem. Both are worth a backed-off retry.
   const transient = response.status === 429 || response.status >= 500;
   if (transient && attempt < MAX_ATTEMPTS) {
     console.warn(`SEASON: page ${page} got ${response.status}, retry ${attempt}`);
@@ -125,19 +119,19 @@ async function fetchPage(
   }
 
   if (!response.ok) {
-    throw new Error(`Jikan responded ${response.status} for page ${page}`);
+    throw new Error(`Upstream responded ${response.status} for page ${page}`);
   }
 
-  return (await response.json()) as JikanPage;
+  return (await response.json()) as ApiPage;
 }
 
 /**
- * Jikan paginates seasons at 25 per page, and a season runs to ~150 titles.
+ * Seasons are paginated at 25 per page, and a season runs to ~150 titles.
  *
  * Pages are fetched sequentially with a delay. Fetching them in parallel is faster but
- * trips Jikan's rate limit - measured against the live API, a 6-page season came back with
- * 44 of 149 titles and a 429. Since the result is cached for hours, a few seconds here is
- * a good trade for completeness.
+ * tripped rate limiting when measured against Jikan - a 6-page season came back with 44 of
+ * 149 titles and a 429. Tenrai's limits aren't published, so the same pacing is kept. Since
+ * the result is cached for hours, a few seconds here is a good trade for completeness.
  */
 async function fetchSeason(year: string, season: string): Promise<SeasonPayload> {
   const first = await fetchPage(year, season, 1);
@@ -145,7 +139,7 @@ async function fetchSeason(year: string, season: string): Promise<SeasonPayload>
   const total = first.pagination?.items?.total ?? first.data.length;
   const lastPage = Math.min(first.pagination?.last_visible_page ?? 1, MAX_PAGES);
 
-  const anime: JikanAnime[] = [...first.data];
+  const anime: ApiAnime[] = [...first.data];
   let partial = false;
   const startedAt = Date.now();
 
