@@ -1,6 +1,17 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
-
 const WATCHMODE_BASE_URL = 'https://api.watchmode.com/v1';
+
+// Minimal structural types for the Vercel Node handler signature. Declared
+// inline rather than imported from @vercel/node so this repo needs no extra
+// dependency (and no lockfile churn) for a single file.
+interface ProxyRequest {
+  query: Record<string, string | string[] | undefined>;
+}
+
+interface ProxyResponse {
+  status(code: number): ProxyResponse;
+  json(body: unknown): ProxyResponse;
+  setHeader(name: string, value: string): void;
+}
 
 /**
  * Server-side proxy for the WatchMode API.
@@ -9,7 +20,7 @@ const WATCHMODE_BASE_URL = 'https://api.watchmode.com/v1';
  * server and never reaches the client bundle. Only the two operations the app
  * actually needs are exposed - this is deliberately not a passthrough proxy.
  */
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: ProxyRequest, res: ProxyResponse) {
   const apiKey = process.env.WATCHMODE_API_KEY;
   if (!apiKey) {
     console.error('WATCHMODE: WATCHMODE_API_KEY is not set');
