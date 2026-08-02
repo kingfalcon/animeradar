@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { Anime } from '../types/anime';
 import { cacheService, CacheService } from './cacheService';
+import { hasAired } from '../utils/airingStatus';
 
 export interface StreamingPlatform {
   name: string;
@@ -253,6 +254,19 @@ class StreamingService {
   }
 
   async findStreamingPlatforms(anime: Anime): Promise<StreamingResult> {
+    // Unaired titles have nothing to find: Kitsu returns no streamingLinks for them and
+    // WatchMode returns no results at all, so a lookup can only spend quota to learn
+    // nothing. Skip both APIs entirely.
+    if (!hasAired(anime)) {
+      console.log(`⏭️  STREAMING SKIP: "${anime.title_english || anime.title}" has not aired yet`);
+      return {
+        platforms: [],
+        searchedTerms: [],
+        source: 'Unaired',
+        success: false
+      };
+    }
+
     const searchTerms: string[] = [];
     let allPlatforms: StreamingPlatform[] = [];
     let successfulSource = '';
@@ -289,16 +303,16 @@ class StreamingService {
       }
     }
 
-    // Phase 2: Only try WatchMode if Kitsu found nothing
-    if (allPlatforms.length === 0) {
+    // Phase 2: Only try WatchMode if Kitsu found nothing.
+    // Unlike Kitsu, WatchMode is metered - each search costs a credit. Retrying with the
+    // secondary title doubles the cost of every miss and rarely turns one into a hit, so
+    // only the primary title is tried here.
+    if (allPlatforms.length === 0 && searchTerms.length > 0) {
       console.log('🔍 Phase 2: Kitsu found nothing, trying WatchMode API (Backup)');
-      for (const searchTerm of searchTerms) {
-        const watchmodePlatforms = await this.searchWatchmode(searchTerm);
-        if (watchmodePlatforms.length > 0) {
-          allPlatforms = watchmodePlatforms;
-          successfulSource = 'WatchMode';
-          break;
-        }
+      const watchmodePlatforms = await this.searchWatchmode(searchTerms[0]);
+      if (watchmodePlatforms.length > 0) {
+        allPlatforms = watchmodePlatforms;
+        successfulSource = 'WatchMode';
       }
     }
 
