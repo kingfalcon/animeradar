@@ -63,6 +63,8 @@ export interface SeasonEndpointResponse {
     total: number;
     /** How many titles the server dropped as adult content. */
     excluded: number;
+    /** How many titles belonged to a different season (MAL's "continuing" entries). */
+    offSeason: number;
     pages: number;
     /** At least one Jikan page failed; the list is incomplete. */
     partial: boolean;
