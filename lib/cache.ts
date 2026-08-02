@@ -45,8 +45,16 @@ function getClient(): Redis | null {
   const token = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
 
   if (!url || !token) {
+    // List the names (never the values) of anything Redis-shaped that *is* present. If an
+    // integration is installed under a naming convention we don't recognise, this is what
+    // makes that visible instead of silently running uncached.
+    const candidates = Object.keys(process.env)
+      .filter((name) => /REDIS|UPSTASH|KV_/i.test(name))
+      .sort();
+
     console.warn(
-      'CACHE: no Redis credentials found (checked UPSTASH_REDIS_REST_URL and KV_REST_API_URL), running uncached'
+      'CACHE: no Redis credentials found, running uncached. Redis-like variables present: ' +
+        (candidates.length ? candidates.join(', ') : '(none)')
     );
     client = null;
   } else {
