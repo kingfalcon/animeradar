@@ -33,9 +33,10 @@ class AnimeApiService {
     const url = `/api/season?year=${year}&season=${season}`;
     const response = await this.makeRequest<SeasonEndpointResponse>(url);
 
-    const { total, excluded, partial, stale } = response.meta;
+    const { total, excluded, offSeason, partial, stale } = response.meta;
     console.log(
       `✓ SEASON: ${response.data.length} titles of ${total}` +
+        `${offSeason ? ` (${offSeason} off-season)` : ''}` +
         `${excluded ? ` (${excluded} adult excluded)` : ''}` +
         `${partial ? ' (partial)' : ''}${stale ? ' (stale cache)' : ''}`
     );

@@ -39,6 +39,8 @@ interface ApiAnime {
   mal_id: number;
   title?: string;
   rating?: string | null;
+  season?: string | null;
+  year?: number | null;
   genres?: ApiGenre[];
   explicit_genres?: ApiGenre[];
   themes?: ApiGenre[];
@@ -46,16 +48,33 @@ interface ApiAnime {
 }
 
 /**
+ * MAL's season pages include "continuing" entries - shows that began in an earlier season
+ * and are still airing - and each record carries the season it actually belongs to. Left in,
+ * a Fall listing shows titles that premiered on 4 July while Summer holds shows airing
+ * later, which reads as plain wrong.
+ *
+ * Records with no season assigned are kept. That's usually an announced show MAL hasn't
+ * slotted yet, and incomplete metadata shouldn't hide it.
+ */
+function belongsToSeason(anime: ApiAnime, season: string, year: string): boolean {
+  if (!anime.season || anime.year == null) {
+    return true;
+  }
+  return anime.season === season && String(anime.year) === year;
+}
+
+/**
  * MAL classifies adult work three ways and doesn't always populate all of them, so all
  * three are checked:
  *  - rating "Rx - Hentai" (R and R+ are mainstream violence/nudity, not this)
  *  - the explicit_genres array, which exists specifically to separate this out
- *  - a Hentai or Erotica genre/theme, for records that put it in the ordinary list
+ *  - a Hentai genre/theme, for records that put it in the ordinary list
  *
- * Ecchi is deliberately not excluded. It's fanservice, not pornography, and it's attached
- * to plenty of mainstream shows - Ranma 1/2 in the current season carries it.
+ * Neither Ecchi nor Erotica is excluded. Both are suggestive rather than pornographic and
+ * both sit on mainstream shows - Ranma 1/2 carries Ecchi, and Erotica alone was removing
+ * every excluded title in Fall 2026, none of which was rated Rx.
  */
-const ADULT_GENRE_NAMES = new Set(['hentai', 'erotica']);
+const ADULT_GENRE_NAMES = new Set(['hentai']);
 
 function isAdult(anime: ApiAnime): boolean {
   if (anime.rating?.startsWith('Rx')) {
@@ -88,6 +107,8 @@ interface SeasonPayload {
   partial: boolean;
   /** How many titles were dropped as adult content. */
   excluded: number;
+  /** How many titles belonged to a different season (MAL's "continuing" entries). */
+  offSeason: number;
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -164,14 +185,20 @@ async function fetchSeason(year: string, season: string): Promise<SeasonPayload>
   }
 
   const deduped = Array.from(new Map(anime.map((a) => [a.mal_id, a])).values());
-  const safe = deduped.filter((a) => !isAdult(a));
-  const excluded = deduped.length - safe.length;
 
-  if (excluded > 0) {
-    console.log(`SEASON: excluded ${excluded} adult title(s) from ${year} ${season}`);
+  const inSeason = deduped.filter((a) => belongsToSeason(a, season, year));
+  const offSeason = deduped.length - inSeason.length;
+
+  const safe = inSeason.filter((a) => !isAdult(a));
+  const excluded = inSeason.length - safe.length;
+
+  if (offSeason > 0 || excluded > 0) {
+    console.log(
+      `SEASON: ${year} ${season} dropped ${offSeason} off-season, ${excluded} adult title(s)`
+    );
   }
 
-  return { anime: safe, total, pages: lastPage, partial, excluded };
+  return { anime: safe, total, pages: lastPage, partial, excluded, offSeason };
 }
 
 /**
@@ -213,6 +240,7 @@ export default async function handler(req: ProxyRequest, res: ProxyResponse) {
       meta: {
         total: result.data.total,
         excluded: result.data.excluded,
+        offSeason: result.data.offSeason,
         pages: result.data.pages,
         partial: result.data.partial,
         stale: result.stale,
