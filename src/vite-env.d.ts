@@ -1,10 +1,3 @@
 /// <reference types="vite/client" />
 
-interface ImportMetaEnv {
-  // readonly VITE_TMDB_API_KEY: string
-  readonly VITE_WATCHMODE_API_KEY: string
-}
-
-interface ImportMeta {
-  readonly env: ImportMetaEnv
-} 
+// No app-specific VITE_ vars: API keys are read server-side in api/watchmode.ts.

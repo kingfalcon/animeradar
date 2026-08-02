@@ -19,9 +19,8 @@ export interface StreamingResult {
 class StreamingService {
   private readonly KITSU_BASE_URL = 'https://kitsu.io/api/edge';
   // private readonly TMDB_BASE_URL = 'https://api.themoviedb.org/3';
-  private readonly WATCHMODE_BASE_URL = 'https://api.watchmode.com/v1';
-  // private readonly TMDB_API_KEY = import.meta.env.VITE_TMDB_API_KEY || '442f737bf360bf27690398a1a07f6be8';
-  private readonly WATCHMODE_API_KEY = import.meta.env.VITE_WATCHMODE_API_KEY || 'vr7qhIPvwk1f8z8V7AXoNh8bVSUvDRPI4TlgB392';
+  // WatchMode is reached through our own serverless proxy so the API key stays server-side.
+  private readonly WATCHMODE_PROXY_URL = '/api/watchmode';
   
   // Rate limiting
   private lastKitsuRequestTime = 0;
@@ -207,9 +206,9 @@ class StreamingService {
   private async searchWatchmode(title: string): Promise<StreamingPlatform[]> {
     try {
       console.log(`🔍 WATCHMODE: Searching for "${title}"`);
-      
+
       // Search for title on WatchMode
-      const searchUrl = `${this.WATCHMODE_BASE_URL}/search/?apiKey=${this.WATCHMODE_API_KEY}&search_field=name&search_value=${encodeURIComponent(title)}&types=tv`;
+      const searchUrl = `${this.WATCHMODE_PROXY_URL}?action=search&title=${encodeURIComponent(title)}`;
       
       const searchResponse = await this.makeWatchmodeRequest<any>(searchUrl);
       
@@ -222,7 +221,7 @@ class StreamingService {
       console.log(`✓ WATCHMODE: Found "${tvShow.name}" (ID: ${tvShow.id})`);
 
       // Get streaming sources for the title
-      const sourcesUrl = `${this.WATCHMODE_BASE_URL}/title/${tvShow.id}/sources/?apiKey=${this.WATCHMODE_API_KEY}&regions=US`;
+      const sourcesUrl = `${this.WATCHMODE_PROXY_URL}?action=sources&id=${encodeURIComponent(tvShow.id)}`;
       const sourcesResponse = await this.makeWatchmodeRequest<any>(sourcesUrl);
 
       const platforms: StreamingPlatform[] = [];
