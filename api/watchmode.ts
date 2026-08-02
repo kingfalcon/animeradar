@@ -1,4 +1,6 @@
-import { withCache } from '../lib/cache';
+// Explicit .js extension: these run as Node ESM, which does not resolve extensionless
+// relative imports. The extension refers to the compiled output, not this source file.
+import { withCache } from '../lib/cache.js';
 
 const WATCHMODE_BASE_URL = 'https://api.watchmode.com/v1';
 
