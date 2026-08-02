@@ -15,7 +15,10 @@ class CacheService {
   private readonly DB_NAME = 'anime-streaming-cache';
   private readonly DB_VERSION = 1;
   private readonly STORE_NAME = 'cache-store';
-  private readonly DEFAULT_TTL = 48 * 60 * 60 * 1000; // 48 hours in milliseconds
+  // Short by design. The authoritative cache is now server-side (lib/cache.ts), shared by
+  // all visitors; this layer only saves a round trip. A long TTL here is what would keep
+  // the 25-title truncation alive in browsers after the fix shipped.
+  private readonly DEFAULT_TTL = 60 * 60 * 1000; // 1 hour in milliseconds
   private readonly DEFAULT_VERSION = '1.0.0';
   private db: IDBDatabase | null = null;
 
@@ -242,10 +245,12 @@ class CacheService {
   }
 
   // Helper method to generate cache keys
-  static generateKey(type: 'anime-basic' | 'streaming-batch' | 'streaming-anime', params: Record<string, any>): string {
+  static generateKey(type: 'anime-basic-v2' | 'streaming-batch' | 'streaming-anime', params: Record<string, any>): string {
     switch (type) {
-      case 'anime-basic':
-        return `anime-basic-${params.season}-${params.year}`;
+      // v2: v1 keys hold the truncated 25-title lists from before season pagination
+      // existed. Renaming the key retires them instead of waiting out their TTL.
+      case 'anime-basic-v2':
+        return `anime-basic-v2-${params.season}-${params.year}`;
       case 'streaming-batch':
         return `streaming-batch-${params.season}-${params.year}`;
       case 'streaming-anime':

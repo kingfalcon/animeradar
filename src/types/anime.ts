@@ -55,6 +55,20 @@ export interface SeasonResponse {
   data: Anime[];
 }
 
+/** Response from api/season.ts - the full season, assembled and cached server-side. */
+export interface SeasonEndpointResponse {
+  data: Anime[];
+  meta: {
+    total: number;
+    pages: number;
+    /** At least one Jikan page failed; the list is incomplete. */
+    partial: boolean;
+    /** Upstream was unreachable and this is the last known good copy. */
+    stale: boolean;
+    cached: boolean;
+  };
+}
+
 export type Season = 'spring' | 'summer' | 'fall' | 'winter';
 
 export interface SeasonInfo {

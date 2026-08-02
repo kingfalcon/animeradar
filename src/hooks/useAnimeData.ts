@@ -43,12 +43,8 @@ export const useAnimeData = (currentSeason: Season, currentYear: number) => {
       console.log('Phase 1: Loading basic anime data...');
       const basicData = await animeApiService.getSeasonalAnimeBasic(currentYear, currentSeason);
       
-      // Remove duplicates and sort
-      const uniqueAnime = basicData.filter((anime, index, self) => 
-        index === self.findIndex(a => a.mal_id === anime.mal_id)
-      );
-      
-      const sortedAnime = uniqueAnime.sort((a, b) => {
+      // Deduplication happens server-side in api/season.ts, which assembles the list.
+      const sortedAnime = [...basicData].sort((a, b) => {
         const dateA = new Date(a.aired.from);
         const dateB = new Date(b.aired.from);
         return dateA.getTime() - dateB.getTime();
