@@ -33,8 +33,12 @@ class AnimeApiService {
     const url = `/api/season?year=${year}&season=${season}`;
     const response = await this.makeRequest<SeasonEndpointResponse>(url);
 
-    const { total, partial, stale } = response.meta;
-    console.log(`✓ SEASON: ${response.data.length}/${total} titles${partial ? ' (partial)' : ''}${stale ? ' (stale cache)' : ''}`);
+    const { total, excluded, partial, stale } = response.meta;
+    console.log(
+      `✓ SEASON: ${response.data.length} titles of ${total}` +
+        `${excluded ? ` (${excluded} adult excluded)` : ''}` +
+        `${partial ? ' (partial)' : ''}${stale ? ' (stale cache)' : ''}`
+    );
 
     // Return anime with empty streaming arrays for fast initial load
     const animeData = response.data.map(anime => ({

@@ -26,9 +26,45 @@ interface ProxyResponse {
   setHeader(name: string, value: string): void;
 }
 
+interface JikanGenre {
+  mal_id: number;
+  name: string;
+}
+
 interface JikanAnime {
   mal_id: number;
+  title?: string;
+  rating?: string | null;
+  genres?: JikanGenre[];
+  explicit_genres?: JikanGenre[];
+  themes?: JikanGenre[];
   [key: string]: unknown;
+}
+
+/**
+ * MAL classifies adult work three ways and doesn't always populate all of them, so all
+ * three are checked:
+ *  - rating "Rx - Hentai" (R and R+ are mainstream violence/nudity, not this)
+ *  - the explicit_genres array, which exists specifically to separate this out
+ *  - a Hentai or Erotica genre/theme, for records that put it in the ordinary list
+ *
+ * Ecchi is deliberately not excluded. It's fanservice, not pornography, and it's attached
+ * to plenty of mainstream shows - Ranma 1/2 in the current season carries it.
+ */
+const ADULT_GENRE_NAMES = new Set(['hentai', 'erotica']);
+
+function isAdult(anime: JikanAnime): boolean {
+  if (anime.rating?.startsWith('Rx')) {
+    return true;
+  }
+
+  if (anime.explicit_genres && anime.explicit_genres.length > 0) {
+    return true;
+  }
+
+  return [...(anime.genres ?? []), ...(anime.themes ?? [])].some((genre) =>
+    ADULT_GENRE_NAMES.has(genre.name.toLowerCase())
+  );
 }
 
 interface JikanPage {
@@ -41,10 +77,13 @@ interface JikanPage {
 
 interface SeasonPayload {
   anime: JikanAnime[];
+  /** Upstream's count for the season, before adult titles are removed. */
   total: number;
   pages: number;
   /** True when at least one page failed and the list is incomplete. */
   partial: boolean;
+  /** How many titles were dropped as adult content. */
+  excluded: number;
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -131,8 +170,14 @@ async function fetchSeason(year: string, season: string): Promise<SeasonPayload>
   }
 
   const deduped = Array.from(new Map(anime.map((a) => [a.mal_id, a])).values());
+  const safe = deduped.filter((a) => !isAdult(a));
+  const excluded = deduped.length - safe.length;
 
-  return { anime: deduped, total, pages: lastPage, partial };
+  if (excluded > 0) {
+    console.log(`SEASON: excluded ${excluded} adult title(s) from ${year} ${season}`);
+  }
+
+  return { anime: safe, total, pages: lastPage, partial, excluded };
 }
 
 /**
@@ -173,6 +218,7 @@ export default async function handler(req: ProxyRequest, res: ProxyResponse) {
       data: result.data.anime,
       meta: {
         total: result.data.total,
+        excluded: result.data.excluded,
         pages: result.data.pages,
         partial: result.data.partial,
         stale: result.stale,
