@@ -59,7 +59,10 @@ export interface SeasonResponse {
 export interface SeasonEndpointResponse {
   data: Anime[];
   meta: {
+    /** Upstream's season count, before adult titles are removed. */
     total: number;
+    /** How many titles the server dropped as adult content. */
+    excluded: number;
     pages: number;
     /** At least one Jikan page failed; the list is incomplete. */
     partial: boolean;
