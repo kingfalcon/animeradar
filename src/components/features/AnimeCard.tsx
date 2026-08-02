@@ -77,18 +77,22 @@ const AnimeCard = ({ anime, streamingLoading = false }: AnimeCardProps) => {
     return null;
   };
 
+  const malUrl = `https://myanimelist.net/anime/${anime.mal_id}`;
+
   return (
-    <div className="anime-card">
+    <div className="anime-card flex flex-col h-full">
       <div className="relative">
-        <img
-          src={anime.images.jpg.large_image_url}
-          alt={anime.title}
-          className="w-full h-64 object-cover"
-          loading="lazy"
-        />
+        <a href={malUrl} target="_blank" rel="noopener noreferrer" className="block">
+          <img
+            src={anime.images.jpg.large_image_url}
+            alt={anime.title}
+            className="w-full h-64 object-cover hover:opacity-90 transition-opacity cursor-pointer"
+            loading="lazy"
+          />
+        </a>
         {anime.score && (
           <a
-            href={`https://myanimelist.net/anime/${anime.mal_id}`}
+            href={malUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="absolute top-2 right-2 bg-yellow-400 text-black px-2 py-1 rounded-full text-sm font-bold flex items-center gap-1 hover:bg-yellow-300 transition-colors cursor-pointer"
@@ -100,7 +104,7 @@ const AnimeCard = ({ anime, streamingLoading = false }: AnimeCardProps) => {
         )}
       </div>
       
-      <div className="p-4">
+      <div className="p-4 flex-1 flex flex-col relative pb-12">
         <h3 className="font-bold text-lg mb-2 line-clamp-2">
           {anime.title_english || anime.title}
         </h3>
@@ -130,6 +134,15 @@ const AnimeCard = ({ anime, streamingLoading = false }: AnimeCardProps) => {
             {anime.synopsis}
           </p>
         )}
+
+        <a
+          href={malUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="absolute bottom-4 right-4 text-sm text-anime-primary hover:text-anime-secondary font-medium transition-colors"
+        >
+          Read more →
+        </a>
       </div>
     </div>
   );
