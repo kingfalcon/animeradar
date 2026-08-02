@@ -1,11 +1,14 @@
 {
+  // Mirrors how Vercel actually runs these: Node ESM, where relative imports need an
+  // explicit .js extension. "bundler" resolution allowed extensionless imports that
+  // typechecked clean and then failed at runtime with ERR_MODULE_NOT_FOUND.
   // The main tsconfig only covers src/. Serverless code under api/ and lib/ is compiled by
   // Vercel at deploy time, so without this it was never typechecked before a push.
   "compilerOptions": {
     "target": "ES2022",
     "lib": ["ES2022"],
-    "module": "ESNext",
-    "moduleResolution": "bundler",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
     "types": ["node"],
     "strict": true,
     "noEmit": true,

@@ -1,4 +1,6 @@
-import { withCache } from '../lib/cache';
+// Explicit .js extension: these run as Node ESM, which does not resolve extensionless
+// relative imports. The extension refers to the compiled output, not this source file.
+import { withCache } from '../lib/cache.js';
 
 const JIKAN_BASE_URL = 'https://api.jikan.moe/v4';
 const SEASONS = ['winter', 'spring', 'summer', 'fall'];
