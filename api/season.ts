@@ -6,6 +6,13 @@ const JIKAN_BASE_URL = 'https://api.jikan.moe/v4';
 const SEASONS = ['winter', 'spring', 'summer', 'fall'];
 const FRESH_FOR_SECONDS = 6 * 60 * 60;
 
+/**
+ * Incomplete seasons are held briefly rather than for the full window. Caching a partial
+ * list at full freshness would pin a truncated season in place for hours after the upstream
+ * recovered - reintroducing exactly the bug this endpoint exists to fix.
+ */
+const PARTIAL_FRESH_FOR_SECONDS = 10 * 60;
+
 /** Jikan reports last_visible_page; this bounds the damage if that value is ever wrong. */
 const MAX_PAGES = 10;
 
@@ -56,7 +63,18 @@ async function fetchPage(
   page: number,
   attempt = 1
 ): Promise<JikanPage> {
-  const response = await fetch(`${JIKAN_BASE_URL}/seasons/${year}/${season}?page=${page}`);
+  // Page 1 is requested without the page parameter even though ?page=1 is equivalent.
+  // Jikan caches the unparameterized URL; any ?page= request goes to MyAnimeList live and
+  // fails whenever MAL is unavailable. Measured during one such window: the bare URL
+  // returned 200 three times out of three while ?page=1 returned 504 three times out of
+  // three. Using the bare form means a degraded season still returns its first 25 titles
+  // instead of nothing.
+  const url =
+    page === 1
+      ? `${JIKAN_BASE_URL}/seasons/${year}/${season}`
+      : `${JIKAN_BASE_URL}/seasons/${year}/${season}?page=${page}`;
+
+  const response = await fetch(url);
 
   // 429 is our own pacing; 5xx is usually Jikan failing to reach MyAnimeList, which it does
   // often enough to matter. Both are worth a backed-off retry.
@@ -142,7 +160,8 @@ export default async function handler(req: ProxyRequest, res: ProxyResponse) {
   try {
     const result = await withCache<SeasonPayload>({
       key: `season:${year}:${season}`,
-      freshFor: FRESH_FOR_SECONDS,
+      freshFor: (payload) =>
+        payload.partial ? PARTIAL_FRESH_FOR_SECONDS : FRESH_FOR_SECONDS,
       fetch: () => fetchSeason(year, season)
     });
 
