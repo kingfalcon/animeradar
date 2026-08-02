@@ -11,6 +11,18 @@ const SEASONS = ['winter', 'spring', 'summer', 'fall'];
 const FRESH_FOR_SECONDS = 6 * 60 * 60;
 
 /**
+ * Bump this whenever the cached payload's shape or its filtering rules change.
+ *
+ * Cached entries stay fresh for hours and hard-live for a week, so without a version in the
+ * key a deploy keeps serving payloads built by the old code - after the off-season filter
+ * shipped, production went on returning unfiltered seasons from cache. Changing the key
+ * retires the old entries instead of waiting them out or flushing Redis by hand.
+ *
+ * v2: added the off-season filter and meta.offSeason; stopped excluding Erotica.
+ */
+const CACHE_VERSION = 'v2';
+
+/**
  * Incomplete seasons are held briefly rather than for the full window. Caching a partial
  * list at full freshness would pin a truncated season in place for hours after the upstream
  * recovered - reintroducing exactly the bug this endpoint exists to fix.
@@ -225,7 +237,7 @@ export default async function handler(req: ProxyRequest, res: ProxyResponse) {
 
   try {
     const result = await withCache<SeasonPayload>({
-      key: `season:${year}:${season}`,
+      key: `season:${CACHE_VERSION}:${year}:${season}`,
       freshFor: (payload) =>
         payload.partial ? PARTIAL_FRESH_FOR_SECONDS : FRESH_FOR_SECONDS,
       fetch: () => fetchSeason(year, season)
